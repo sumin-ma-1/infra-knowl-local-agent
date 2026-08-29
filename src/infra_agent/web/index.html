@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Infra Knowledge Agent</title>
+  <style>
+    :root {
+      --bg: #121418;
+      --panel: #1b1e24;
+      --line: #2a2f38;
+      --text: #e8eaed;
+      --muted: #9aa3af;
+      --accent: #7c9cff;
+      --tool: #3d4a3a;
+      --user: #2a3348;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "IBM Plex Sans KR", "Noto Sans KR", sans-serif;
+    }
+    body {
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      max-width: 860px;
+      margin: 0 auto;
+      min-height: 100%;
+    }
+    header {
+      padding: 20px 20px 12px;
+      border-bottom: 1px solid var(--line);
+    }
+    header h1 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 600;
+    }
+    header p {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    #log {
+      overflow-y: auto;
+      padding: 16px 20px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .msg {
+      max-width: 92%;
+      padding: 12px 14px;
+      border-radius: 10px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      font-size: 14px;
+    }
+    .msg.user { align-self: flex-end; background: var(--user); }
+    .msg.assistant { align-self: flex-start; background: var(--panel); }
+    .tools {
+      align-self: flex-start;
+      font-size: 12px;
+      color: var(--muted);
+      background: var(--tool);
+      padding: 8px 12px;
+      border-radius: 8px;
+      max-width: 92%;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    form {
+      display: flex;
+      gap: 8px;
+      padding: 12px 20px 20px;
+      border-top: 1px solid var(--line);
+    }
+    input {
+      flex: 1;
+      background: var(--panel);
+      color: var(--text);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px 14px;
+      font-size: 14px;
+    }
+    button {
+      background: var(--accent);
+      color: #0e1116;
+      border: 0;
+      border-radius: 8px;
+      padding: 0 16px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:disabled { opacity: 0.5; cursor: default; }
+    .hint { color: var(--muted); font-size: 12px; padding: 0 20px 8px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Infra Knowledge Agent</h1>
+    <p>Inventory Markdown을 Tool로 조회합니다. 서버 IP·SSH 포트는 RAG가 아니라 structured lookup입니다.</p>
+  </header>
+  <div id="log"></div>
+  <div class="hint">예: GPU 서버 리스트 알려줘 · gpu01 SSH 포트 · 11434 쓰는 서버</div>
+  <form id="f">
+    <input id="q" autocomplete="off" placeholder="인프라에 대해 물어보세요" />
+    <button type="submit">보내기</button>
+  </form>
+  <script>
+    const log = document.getElementById("log");
+    const form = document.getElementById("f");
+    const input = document.getElementById("q");
+    const button = form.querySelector("button");
+    let conversationId = null;
+
+    function add(cls, text) {
+      const el = document.createElement("div");
+      el.className = cls;
+      el.textContent = text;
+      log.appendChild(el);
+      log.scrollTop = log.scrollHeight;
+      return el;
+    }
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const message = input.value.trim();
+      if (!message) return;
+      input.value = "";
+      add("msg user", message);
+      button.disabled = true;
+      try {
+        const res = await fetch("/v1/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message, conversation_id: conversationId }),
+        });
+        if (!res.ok) {
+          const err = await res.text();
+          add("msg assistant", "요청 실패: " + err);
+          return;
+        }
+        const data = await res.json();
+        conversationId = data.conversation_id;
+        if (data.tool_calls && data.tool_calls.length) {
+          const lines = data.tool_calls.map((t) => {
+            return t.name + "(" + JSON.stringify(t.arguments) + ")";
+          });
+          add("tools", "tools\n" + lines.join("\n"));
+        }
+        add("msg assistant", data.answer || "(빈 응답)");
+      } catch (err) {
+        add("msg assistant", "연결 실패: " + err);
+      } finally {
+        button.disabled = false;
+        input.focus();
+      }
+    });
+  </script>
+</body>
+</html>
