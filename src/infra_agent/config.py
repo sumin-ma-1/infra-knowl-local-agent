@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     )
 
     ollama_host: str = "http://127.0.0.1:11434"
-    ollama_model: str = "qwen2.5:7b"
+    ollama_model: str = "gemma4:e4b"
     inventory_dir: Path = ROOT_DIR / "inventory"
     host: str = "127.0.0.1"
     port: int = 8000

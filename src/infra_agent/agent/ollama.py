@@ -24,6 +24,7 @@ class OllamaClient:
             "model": self.model,
             "messages": messages,
             "stream": False,
+            "think": False,
             "options": {"temperature": 0.1},
         }
         if tools:

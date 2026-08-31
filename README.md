@@ -36,7 +36,7 @@ SSH 실행 Tool은 넣지 않습니다.
 ## 요구 사항
 
 - Python 3.10+
-- [Ollama](https://ollama.com) — tool calling이 되는 모델 (기본: `qwen2.5:7b`)
+- [Ollama](https://ollama.com) — tool calling이 되는 모델 (기본: `gemma4:e4b`)
 - Nextcloud 앱 비밀번호, `개발서버 현황.md` 경로 (`.env`)
 
 ## 실행
