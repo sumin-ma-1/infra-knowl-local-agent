@@ -43,8 +43,13 @@ class ToolRegistry:
 
 
 def build_registry(store: InventoryStore) -> ToolRegistry:
+    from infra_agent.config import get_settings
+
     registry = ToolRegistry()
     register_inventory_tools(registry, store)
+    settings = get_settings()
+    if settings.nextcloud_ready():
+        register_lab_note_tool(registry, settings)
     return registry
 
 
@@ -166,6 +171,50 @@ def register_inventory_tools(registry: ToolRegistry, store: InventoryStore) -> N
             },
         },
         search_inventory,
+    )
+
+
+def register_lab_note_tool(registry: ToolRegistry, settings: Any) -> None:
+    from infra_agent.tools.nextcloud import LabNoteClient, extract_sections
+
+    client = LabNoteClient(settings)
+
+    def read_lab_note(query: str | None = None) -> dict[str, Any]:
+        """연구실 '개발서버 현황' 노트를 Nextcloud에서 읽어 관련 구간을 반환한다."""
+        note = client.fetch()
+        body = extract_sections(note.text, query or "")
+        return {
+            "source": "nextcloud",
+            "path": note.path,
+            "cached": note.cached,
+            "query": query or "",
+            "content": body,
+        }
+
+    registry.register(
+        {
+            "type": "function",
+            "function": {
+                "name": "read_lab_note",
+                "description": (
+                    "Nextcloud 옵시디언 노트 '개발서버 현황'을 조회한다. "
+                    "판교/시흥 서버, 사무실 Wi-Fi, GitHub, Bookstack, AWS 접속 정보처럼 "
+                    "연구실 위키에 있는 실제 현황을 물을 때 사용한다. "
+                    "query에 키워드를 넣으면 관련 구간만 가져온다. "
+                    "예: query='판교 wifi', query='시흥 서버', query='aws'."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "찾고 싶은 키워드. 비우면 노트 전체를 가져온다.",
+                        }
+                    },
+                },
+            },
+        },
+        read_lab_note,
     )
 
 

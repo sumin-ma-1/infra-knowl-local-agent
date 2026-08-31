@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     agent_timeout_seconds: float = 120.0
     telegram_bot_token: str = ""
     telegram_allowed_chat_ids: str = ""
+    nextcloud_url: str = ""
+    nextcloud_user: str = ""
+    nextcloud_app_password: str = ""
+    nextcloud_file_path: str = ""
 
     def resolved_inventory_dir(self) -> Path:
         path = self.inventory_dir
@@ -33,11 +37,13 @@ class Settings(BaseSettings):
 
         return parse_allowed_chat_ids(self.telegram_allowed_chat_ids)
 
-    def resolved_inventory_dir(self) -> Path:
-        path = self.inventory_dir
-        if not path.is_absolute():
-            path = ROOT_DIR / path
-        return path
+    def nextcloud_ready(self) -> bool:
+        return bool(
+            self.nextcloud_url.strip()
+            and self.nextcloud_user.strip()
+            and self.nextcloud_app_password.strip()
+            and self.nextcloud_file_path.strip()
+        )
 
 
 def get_settings() -> Settings:
