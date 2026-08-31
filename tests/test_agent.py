@@ -69,11 +69,14 @@ def test_parse_truncated_tool_call_xml():
     assert calls[0]["function"]["arguments"]["query"] == "ollama"
 
 
-def test_agent_nudges_when_first_reply_skips_tools(store):
+def test_instruction_ack_retries_original_question(store):
     tools = build_registry(store)
     llm = ScriptedLLM(
         [
-            {"role": "assistant", "content": "gpu01은 내부망에 있습니다."},
+            {
+                "role": "assistant",
+                "content": "네, 알겠습니다. 앞으로는 도구를 사용하겠습니다.",
+            },
             {
                 "role": "assistant",
                 "content": "",

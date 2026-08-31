@@ -50,10 +50,19 @@ _CHITCHAT = re.compile(
     r"응|네|아니|ㅇㅋ|ok|okay|ㅎ)[\s!?.~ㅋㅎ]*$",
     re.IGNORECASE,
 )
+_INSTRUCTION_ACK = re.compile(
+    r"알겠습니다|주의하겠|앞으로는|해당 도구|read_lab_note|"
+    r"간결하게 답변|반드시.*사용|시스템 프롬프트",
+    re.IGNORECASE,
+)
 
 
 def is_chitchat(text: str) -> bool:
     return bool(_CHITCHAT.match((text or "").strip()))
+
+
+def _is_instruction_ack(text: str) -> bool:
+    return bool(_INSTRUCTION_ACK.search(text or ""))
 
 
 def run_agent(
@@ -87,16 +96,13 @@ def run_agent(
         messages.append(assistant_msg)
 
         if not tool_calls:
-            if step == 1 and not traces and not is_chitchat(question):
-                messages.append(
-                    {
-                        "role": "user",
-                        "content": (
-                            "인프라 사실이 필요하면 read_lab_note를 호출하세요. "
-                            "이미 인사나 잡담으로 충분하면 tool 없이 짧게 답하세요."
-                        ),
-                    }
-                )
+            if (
+                step == 1
+                and not traces
+                and not is_chitchat(question)
+                and _is_instruction_ack(content)
+            ):
+                messages.append({"role": "user", "content": question})
                 continue
             return AgentResult(answer=content, tool_calls=traces, steps=step)
 
