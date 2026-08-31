@@ -95,3 +95,13 @@ def test_agent_nudges_when_first_reply_skips_tools(store):
     result = run_agent("gpu01은 어느 네트워크에 있어?", llm, tools)
     assert result.tool_calls[0].name == "get_server"
     assert "192.168.10" in result.answer
+
+
+def test_greeting_does_not_force_tools(store):
+    tools = build_registry(store)
+    llm = ScriptedLLM(
+        [{"role": "assistant", "content": "안녕하세요. 필요한 인프라 정보를 물어보시면 됩니다."}]
+    )
+    result = run_agent("안녕", llm, tools)
+    assert result.tool_calls == []
+    assert "안녕하세요" in result.answer
