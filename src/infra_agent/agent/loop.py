@@ -82,8 +82,8 @@ def run_agent(
                     {
                         "role": "user",
                         "content": (
-                            "추측하지 마세요. 답을 쓰기 전에 list_servers, "
-                            "get_server, search_inventory 중 필요한 tool을 호출하세요."
+                            "추측하지 마세요. 답을 쓰기 전에 필요한 tool을 호출하세요. "
+                            "연구실 현황은 read_lab_note를 사용하세요."
                         ),
                     }
                 )

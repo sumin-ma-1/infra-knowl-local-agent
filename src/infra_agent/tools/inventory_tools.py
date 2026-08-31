@@ -46,7 +46,8 @@ def build_registry(store: InventoryStore) -> ToolRegistry:
     from infra_agent.config import get_settings
 
     registry = ToolRegistry()
-    register_inventory_tools(registry, store)
+    if store.docs:
+        register_inventory_tools(registry, store)
     settings = get_settings()
     if settings.nextcloud_ready():
         register_lab_note_tool(registry, settings)

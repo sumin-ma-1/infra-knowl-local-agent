@@ -62,16 +62,16 @@ def main(argv: list[str] | None = None) -> int:
             return
         await update.message.reply_text(
             "인프라 조회 봇입니다.\n"
-            "개인 채팅: 그냥 질문하세요.\n"
-            "단체방: /ask gpu01 SSH 포트  또는  @봇이름 질문\n\n"
+            "개인 채팅: 그냥 질문하세요. 예: 판교 사무실 wifi\n"
+            "단체방: /ask 시흥 서버 SSH  또는  @봇이름 질문\n\n"
             f"chat_id: {update.effective_chat.id if update.effective_chat else '?'}"
         )
 
     async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if update.message:
             await update.message.reply_text(
-                "예: GPU 서버 리스트 알려줘\n"
-                "단체방: /ask gpu01 IP 알려줘"
+                "예: 판교 사무실 wifi 알려줘\n"
+                "단체방: /ask 시흥 서버 SSH"
             )
 
     async def ask_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -79,7 +79,7 @@ def main(argv: list[str] | None = None) -> int:
             return
         question = extract_ask_command(update.message.text) or ""
         if not question:
-            await update.message.reply_text("질문을 같이 보내 주세요. 예: /ask gpu01 SSH 포트")
+            await update.message.reply_text("질문을 같이 보내 주세요. 예: /ask 판교 wifi")
             return
         await _reply_with_agent(update, context, question)
 
