@@ -1,7 +1,7 @@
-"""Phase 3 stub: Telegram conversation search.
+"""Phase 3 stub: search *existing* Telegram group history.
 
-Prefer BM25 + embedding hybrid search. Keyword matching is stronger for
-ports, IPs, hostnames, and model numbers.
+This is not the bot frontend (`infra_agent.telegram_bot`). Bots cannot read
+a group's past messages. History search needs a user-client API later.
 """
 
 from __future__ import annotations

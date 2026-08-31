@@ -27,8 +27,9 @@ Local LLM (Ollama)
 | 단계 | 범위 | 상태 |
 |------|------|------|
 | 1 | MD Inventory + Ollama + FastAPI + Tool Calling | 구현됨 |
+| 1b | Telegram 봇 (질문 UI, 단체방 추가 가능) | 구현됨 |
 | 2 | Nextcloud WebDAV + 로컬 인덱스 + Hybrid RAG | stub |
-| 3 | Telegram 검색 + BM25/embedding hybrid | stub |
+| 3 | Telegram **대화 검색** (과거 메시지 인덱스) | stub |
 | 4 | Inventory write + 사용자 승인 | 미착수 |
 
 SSH 실행 Tool은 넣지 않습니다. 지식 조회와 서버 조작은 분리합니다.
@@ -63,6 +64,36 @@ CLI:
 python -m infra_agent.cli "GPU 서버 리스트 알려줘"
 python -m infra_agent.cli
 ```
+
+## Telegram 봇
+
+웹 UI와 같은 Agent입니다. 개인 채팅에서 질문하면 되고, 나중에 기존 단체방에 봇만 추가하면 됩니다.
+
+단체방에서는 모든 메시지에 답하지 않습니다.
+
+- `/ask gpu01 SSH 포트 알려줘`
+- `@봇이름 gpu01 SSH 포트 알려줘`
+- 봇 답장에 이어서 질문 (reply)
+
+1. [@BotFather](https://t.me/BotFather) 에서 `/newbot` → 토큰을 `.env` 의 `TELEGRAM_BOT_TOKEN` 에 넣기
+2. `/setjoingroups` → Enable (단체방 초대 허용)
+3. `/setprivacy` → **Enable 유지** (기본값). 꺼면 방의 모든 잡담을 봇이 보게 됩니다.
+4. 실행:
+
+```bash
+python -m infra_agent.telegram_bot
+```
+
+5. 봇에게 `/start` → 표시되는 `chat_id` 를 복사
+6. 단체방에 넣기 전에 `.env` 에 허용 채팅을 넣기:
+
+```bash
+TELEGRAM_ALLOWED_CHAT_IDS=123456789,-1001234567890
+```
+
+개인 `chat_id`는 양수, 단체방은 보통 `-100...` 음수입니다. 허용 목록이 비어 있으면 모든 채팅에 응답합니다.
+
+봇은 **앞으로 오는 질문만** 답합니다. 기존 단체방의 과거 대화를 검색하는 기능은 Bot API로 불가능하고, 3단계(유저 클라이언트 인덱스)에서 다룹니다.
 
 테스트:
 
