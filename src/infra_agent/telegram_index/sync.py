@@ -276,6 +276,8 @@ def _to_indexed(
     text = (getattr(message, "message", None) or getattr(message, "text", None) or "").strip()
     if not text:
         return None
+    if text.startswith("/ask") or text.startswith("/start") or text.startswith("/help"):
+        return None
     msg_id = int(getattr(message, "id", 0) or 0)
     if msg_id <= 0:
         return None

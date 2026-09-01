@@ -44,6 +44,16 @@ def test_search_matches_korean_and_english(tmp_path: Path):
     assert recent["results"][0]["message_id"] == 2
 
 
+def test_search_stems_korean_endings(tmp_path: Path):
+    index = MessageIndex(tmp_path / "index.sqlite")
+    index.add_messages(
+        [_msg(-1001, 1, "IRIS 암호 변경했습니다. secret-placeholder")]
+    )
+    hits = index.search("iris 변경된 암호")
+    assert hits["count"] == 1
+    assert "변경했습니다" in hits["results"][0]["text"]
+
+
 def test_is_watched_chat_only_registered_rooms():
     keep = {-5141393598, -5502317810}
     assert is_watched_chat(-5141393598, keep) is True

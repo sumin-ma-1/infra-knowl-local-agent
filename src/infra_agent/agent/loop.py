@@ -44,6 +44,9 @@ _JSON_TOOL = re.compile(
     r'\{\s*"name"\s*:\s*"([^"]+)"\s*,\s*"arguments"\s*:\s*(\{.*?\})\s*\}',
     re.DOTALL,
 )
+_FN_KWARG = re.compile(
+    r"^\s*([a-zA-Z_][\w]*)\s*\(\s*([a-zA-Z_][\w]*)\s*=\s*['\"]([^'\"]*)['\"]\s*\)\s*$",
+)
 _CHITCHAT = re.compile(
     r"^(안녕|안녕하세요|안녕하십니까|하이|헬로|hello|hi|hey|ㅎㅇ|"
     r"고마워|감사합니다|감사|땡큐|thanks|thank you|"
@@ -148,7 +151,19 @@ def parse_text_tool_calls(content: str) -> list[dict[str, Any]]:
             calls.append(
                 {"function": {"name": match.group(1), "arguments": arguments}}
             )
-    return calls
+        if calls:
+            return calls
+    fn = _FN_KWARG.match(content.strip())
+    if fn:
+        return [
+            {
+                "function": {
+                    "name": fn.group(1),
+                    "arguments": {fn.group(2): fn.group(3)},
+                }
+            }
+        ]
+    return []
 
 
 def _tool_payload(raw: str) -> dict[str, Any] | None:

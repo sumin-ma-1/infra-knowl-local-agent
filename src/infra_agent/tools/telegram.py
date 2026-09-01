@@ -60,9 +60,9 @@ def register_telegram_index_tools(registry: ToolRegistry, settings: Settings) ->
                 "name": "search_telegram",
                 "description": (
                     "인덱싱해 둔 텔레그램 단체방 과거 대화를 검색한다. "
-                    "누가 언제 뭐라고 했는지, 방 합의, 노트에 없는 맥락을 물을 때 사용한다. "
-                    "서버 IP/SSH/Wi-Fi 같은 공식 현황은 read_lab_note를 먼저 쓴다. "
-                    "query 예: 'SSH 포트', '시흥 서버', 'vpn'."
+                    "암호 변경 공지, 누가 언제 뭐라고 했는지, 노트에 없는 최신 맥락을 물을 때 사용한다. "
+                    "read_lab_note에 값이 없으면 이 도구도 반드시 호출한다. "
+                    "query는 짧은 핵심어. 예: 'IRIS 암호', 'SSH 포트', '시흥 서버'."
                 ),
                 "parameters": {
                     "type": "object",

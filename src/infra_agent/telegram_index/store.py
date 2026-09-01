@@ -11,6 +11,50 @@ from typing import Any
 
 
 _TOKEN = re.compile(r"\w+", re.UNICODE)
+_SUFFIXES = (
+    "했습니다",
+    "되었습니다",
+    "했어요",
+    "입니다",
+    "인가요",
+    "뭔가요",
+    "해주세요",
+    "하세요",
+    "하는",
+    "된",
+)
+_STOPWORDS = {
+    "뭔가요",
+    "뭐야",
+    "알려줘",
+    "알려주세요",
+    "무엇",
+    "인가요",
+    "해주세요",
+}
+
+
+def search_tokens(query: str) -> list[str]:
+    """Split a query and strip common Korean endings so '변경된' matches '변경했습니다'."""
+    tokens: list[str] = []
+    seen: set[str] = set()
+    for raw in _TOKEN.findall(query or ""):
+        token = raw.lower()
+        if token in _STOPWORDS:
+            continue
+        for suffix in _SUFFIXES:
+            if token.endswith(suffix) and len(token) > len(suffix) + 1:
+                token = token[: -len(suffix)]
+                break
+        if len(token) < 2:
+            continue
+        if token not in seen:
+            seen.add(token)
+            tokens.append(token)
+    if tokens:
+        return tokens
+    stripped = (query or "").strip()
+    return [stripped] if stripped else []
 
 
 @dataclass(frozen=True)
@@ -135,10 +179,7 @@ class MessageIndex:
         end_date: str | None = None,
         limit: int = 20,
     ) -> dict[str, Any]:
-        tokens = [t for t in _TOKEN.findall(query or "") if t]
-        if not tokens:
-            stripped = (query or "").strip()
-            tokens = [stripped] if stripped else []
+        tokens = search_tokens(query)
         if not tokens:
             return {
                 "query": query,

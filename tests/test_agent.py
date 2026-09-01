@@ -69,6 +69,14 @@ def test_parse_truncated_tool_call_xml():
     assert calls[0]["function"]["arguments"]["query"] == "ollama"
 
 
+def test_parse_bare_function_tool_call():
+    from infra_agent.agent.loop import parse_text_tool_calls
+
+    calls = parse_text_tool_calls("read_lab_note(query='iris')")
+    assert calls[0]["function"]["name"] == "read_lab_note"
+    assert calls[0]["function"]["arguments"]["query"] == "iris"
+
+
 def test_instruction_ack_retries_original_question(store):
     tools = build_registry(store)
     llm = ScriptedLLM(
