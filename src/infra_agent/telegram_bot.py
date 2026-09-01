@@ -122,8 +122,11 @@ def main(argv: list[str] | None = None) -> int:
 
         lock = locks[chat.id]
         async with lock:
-            await context.bot.send_chat_action(chat_id=chat.id, action=ChatAction.TYPING)
             history = histories[chat.id]
+            stop_typing = asyncio.Event()
+            typer = asyncio.create_task(
+                _keep_typing(context.bot, chat.id, stop_typing)
+            )
             try:
                 result = await asyncio.to_thread(
                     run_agent,
@@ -137,6 +140,9 @@ def main(argv: list[str] | None = None) -> int:
                 log.exception("agent failed chat_id=%s", chat.id)
                 await message.reply_text("조회 중 오류가 났습니다. 잠시 후 다시 시도해 주세요.")
                 return
+            finally:
+                stop_typing.set()
+                await typer
             history.append({"role": "user", "content": question})
             history.append({"role": "assistant", "content": result.answer})
             del history[:-12]
@@ -171,6 +177,19 @@ def _chunks(text: str, limit: int = TELEGRAM_MAX) -> list[str]:
         parts.append(rest[:limit])
         rest = rest[limit:]
     return parts
+
+
+async def _keep_typing(bot, chat_id: int, stop: asyncio.Event) -> None:
+    """Telegram typing indicators expire after ~5s; refresh until stop is set."""
+    while not stop.is_set():
+        try:
+            await bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+        except Exception:
+            log.debug("typing refresh failed", exc_info=True)
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=4.0)
+        except asyncio.TimeoutError:
+            continue
 
 
 if __name__ == "__main__":
