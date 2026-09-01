@@ -15,8 +15,6 @@ class Settings(BaseSettings):
     ollama_host: str = "http://127.0.0.1:11434"
     ollama_model: str = "gemma4:e4b"
     inventory_dir: Path = ROOT_DIR / "inventory"
-    host: str = "127.0.0.1"
-    port: int = 8000
     agent_max_steps: int = 8
     agent_timeout_seconds: float = 120.0
     telegram_bot_token: str = ""

@@ -6,7 +6,7 @@
 질문마다 WebDAV 전체를 훑지 않고, 해당 파일만 ETag로 받아 캐시합니다.
 
 ```text
-User Query (Telegram / CLI / 웹)
+User Query (Telegram / CLI)
     │
     ▼
 Local LLM (Ollama)
@@ -21,7 +21,7 @@ Local LLM (Ollama)
 
 | 단계 | 범위 | 상태 |
 |------|------|------|
-| 1 | Ollama + FastAPI + Tool Calling | 구현됨 |
+| 1 | Ollama + CLI + Tool Calling | 구현됨 |
 | 1b | Telegram 봇 (질문 UI, 단체방 추가 가능) | 구현됨 |
 | 2 | Nextcloud 단일 노트 (`read_lab_note`) | 구현됨 |
 | 3 | Telegram **대화 검색** (과거 메시지 인덱스) | 구현됨 |
@@ -42,12 +42,6 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
 cp .env.example .env
-```
-
-웹 UI:
-
-```bash
-uvicorn infra_agent.api:app --reload --host 127.0.0.1 --port 8001
 ```
 
 CLI:
