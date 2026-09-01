@@ -21,6 +21,14 @@ class Settings(BaseSettings):
     agent_timeout_seconds: float = 120.0
     telegram_bot_token: str = ""
     telegram_allowed_chat_ids: str = ""
+    telegram_api_id: int = 0
+    telegram_api_hash: str = ""
+    telegram_phone: str = ""
+    telegram_index_chats: str = ""
+    telegram_session_path: str = "data/telegram-user"
+    telegram_index_db: str = "data/telegram-index.sqlite"
+    telegram_index_interval_seconds: float = 900.0
+    telegram_index_max_messages: int = 0
     nextcloud_url: str = ""
     nextcloud_user: str = ""
     nextcloud_app_password: str = ""
@@ -36,6 +44,29 @@ class Settings(BaseSettings):
         from infra_agent.telegram_policy import parse_allowed_chat_ids
 
         return parse_allowed_chat_ids(self.telegram_allowed_chat_ids)
+
+    def index_chat_ids(self) -> list[int]:
+        from infra_agent.telegram_policy import parse_id_list
+
+        return parse_id_list(self.telegram_index_chats)
+
+    def resolved_telegram_session_path(self) -> Path:
+        path = Path(self.telegram_session_path)
+        if not path.is_absolute():
+            path = ROOT_DIR / path
+        return path
+
+    def resolved_telegram_index_db(self) -> Path:
+        path = Path(self.telegram_index_db)
+        if not path.is_absolute():
+            path = ROOT_DIR / path
+        return path
+
+    def telegram_user_ready(self) -> bool:
+        return bool(self.telegram_api_id and self.telegram_api_hash.strip())
+
+    def telegram_index_ready(self) -> bool:
+        return self.telegram_user_ready() and bool(self.index_chat_ids())
 
     def nextcloud_ready(self) -> bool:
         return bool(

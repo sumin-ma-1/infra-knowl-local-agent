@@ -17,6 +17,7 @@ dependencies = [
     "pyyaml>=6.0.1",
     "python-dotenv>=1.0.1",
     "python-telegram-bot>=21.6",
+    "telethon>=1.36.0",
 ]
 
 [project.optional-dependencies]
@@ -27,6 +28,7 @@ dev = [
 [project.scripts]
 infra-agent = "infra_agent.cli:main"
 infra-agent-telegram = "infra_agent.telegram_bot:main"
+infra-agent-telegram-index = "infra_agent.telegram_index.__main__:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

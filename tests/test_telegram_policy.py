@@ -4,6 +4,7 @@ from infra_agent.telegram_policy import (
     extract_mention_question,
     group_question,
     parse_allowed_chat_ids,
+    parse_id_list,
 )
 
 
@@ -11,6 +12,10 @@ def test_parse_allowed_chat_ids():
     assert parse_allowed_chat_ids("") is None
     assert parse_allowed_chat_ids("  ") is None
     assert parse_allowed_chat_ids("-1001, 42") == frozenset({-1001, 42})
+    assert parse_id_list("-5141393598, -5502317810     # 방 이름") == [
+        -5141393598,
+        -5502317810,
+    ]
 
 
 def test_chat_allowed():

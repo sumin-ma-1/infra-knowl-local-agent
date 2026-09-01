@@ -51,6 +51,10 @@ def build_registry(store: InventoryStore) -> ToolRegistry:
     settings = get_settings()
     if settings.nextcloud_ready():
         register_lab_note_tool(registry, settings)
+    if settings.telegram_index_ready() or settings.resolved_telegram_index_db().is_file():
+        from infra_agent.tools.telegram import register_telegram_index_tools
+
+        register_telegram_index_tools(registry, settings)
     return registry
 
 

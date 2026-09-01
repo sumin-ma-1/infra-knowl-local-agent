@@ -9,16 +9,29 @@ from __future__ import annotations
 import re
 
 
-def parse_allowed_chat_ids(raw: str) -> frozenset[int] | None:
-    text = (raw or "").strip()
+def parse_id_list(raw: str) -> list[int]:
+    """Parse comma-separated chat ids. Inline # comments are ignored."""
+    text = (raw or "").split("#", 1)[0].strip()
     if not text:
-        return None
-    ids: set[int] = set()
+        return []
+    ids: list[int] = []
+    seen: set[int] = set()
     for part in text.split(","):
         part = part.strip()
         if not part:
             continue
-        ids.add(int(part))
+        value = int(part)
+        if value in seen:
+            continue
+        seen.add(value)
+        ids.append(value)
+    return ids
+
+
+def parse_allowed_chat_ids(raw: str) -> frozenset[int] | None:
+    ids = parse_id_list(raw)
+    if not ids:
+        return None
     return frozenset(ids)
 
 

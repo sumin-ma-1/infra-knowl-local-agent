@@ -1,8 +1,9 @@
 """Telegram Bot frontend for the Infra Knowledge Agent.
 
-This is the chat UI, not the Phase-3 conversation-search tool.
+This is the chat UI, not the conversation-search tool.
 Add the bot to an existing group later; it only answers /ask, @mentions,
-or replies to its own messages.
+or replies to its own messages. Group history is indexed separately
+(`python -m infra_agent.telegram_index`).
 """
 
 from __future__ import annotations
@@ -151,9 +152,27 @@ def main(argv: list[str] | None = None) -> int:
             for chunk in _chunks(text):
                 await reply_markdownish(message, chunk)
 
+    async def on_startup(application: Application) -> None:
+        task = asyncio.create_task(
+            _periodic_telegram_index(settings),
+            name="telegram-index",
+        )
+        application.bot_data["index_task"] = task
+
+    async def on_shutdown(application: Application) -> None:
+        task = application.bot_data.get("index_task")
+        if task:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
     app = (
         Application.builder()
         .token(token)
+        .post_init(on_startup)
+        .post_shutdown(on_shutdown)
         .build()
     )
     app.add_handler(CommandHandler("start", start))
@@ -161,12 +180,42 @@ def main(argv: list[str] | None = None) -> int:
     app.add_handler(CommandHandler("ask", ask_cmd))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
     log.info(
-        "polling model=%s allowlist=%s",
+        "polling model=%s allowlist=%s index_chats=%s",
         settings.ollama_model,
         "open" if allowed is None else sorted(allowed),
+        settings.index_chat_ids(),
     )
     app.run_polling(allowed_updates=["message"])
     return 0
+
+
+async def _periodic_telegram_index(settings) -> None:
+    from infra_agent.telegram_index.sync import session_exists, sync_chats
+
+    if not settings.telegram_index_ready():
+        log.info("telegram index skipped (TELEGRAM_INDEX_CHATS or API keys missing)")
+        return
+    interval = max(60.0, float(settings.telegram_index_interval_seconds or 900))
+    while True:
+        if not session_exists(settings):
+            log.warning(
+                "telegram index waiting for session. "
+                "Run `python -m infra_agent.telegram_index login` once on this host."
+            )
+            await asyncio.sleep(interval)
+            continue
+        try:
+            result = await sync_chats(settings)
+            log.info(
+                "telegram index sync messages=%s chats=%s",
+                result.get("message_count"),
+                [c.get("title") or c.get("chat_id") for c in result.get("chats") or []],
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.exception("telegram index sync failed")
+        await asyncio.sleep(interval)
 
 
 def _chunks(text: str, limit: int = TELEGRAM_MAX) -> list[str]:
