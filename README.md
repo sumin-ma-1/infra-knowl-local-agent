@@ -89,7 +89,10 @@ TELEGRAM_ALLOWED_CHAT_IDS=123456789,-1001234567890
 python -m infra_agent.telegram_index login
 python -m infra_agent.telegram_index sync
 python -m infra_agent.telegram_index status
+python -m infra_agent.telegram_index embed
 ```
+
+검색은 키워드(`LIKE`)와 Ollama 임베딩(`bge-m3`)을 같이 씁니다. 철자가 조금 달라도 비슷한 글을 찾습니다. 임베딩은 봇 시작 때 백필되고, 새 글은 들어오는 즉시 벡터를 만듭니다.
 
 세션 파일은 `data/telegram-user.session`, 인덱스는 `data/telegram-index.sqlite` 입니다. git에 넣지 마세요.
 
@@ -108,7 +111,7 @@ python -m infra_agent.telegram_index drop --chat-id -5141393598
 현재 런타임 Tool은 질문 종류에 따라 등록됩니다.
 
 1. `read_lab_note(query?)` — Nextcloud `개발서버 현황.md`
-2. `search_telegram(query, chat_id?)` — 인덱싱된 단체방 과거 대화
+2. `search_telegram(query, chat_id?)` — 인덱싱된 단체방 과거 대화 (키워드 + 임베딩)
 3. `get_recent_messages(chat_id?, limit?)` — 인덱싱된 방의 최근 메시지
 
 로컬 `inventory/*.md` 예시 데이터는 제거했습니다. 구조화 inventory 로더는 코드에 남아 있고, 파일이 있을 때만 Tool로 등록됩니다.

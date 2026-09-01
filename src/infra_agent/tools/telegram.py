@@ -11,6 +11,9 @@ from infra_agent.tools.inventory_tools import ToolRegistry
 
 def register_telegram_index_tools(registry: ToolRegistry, settings: Settings) -> None:
     store = MessageIndex(settings.resolved_telegram_index_db())
+    from infra_agent.telegram_index.embed import MessageEmbedder
+
+    embedder = MessageEmbedder.from_settings(settings)
 
     def search_telegram(
         query: str,
@@ -27,13 +30,16 @@ def register_telegram_index_tools(registry: ToolRegistry, settings: Settings) ->
             chat_id=parsed,
             start_date=start_date,
             end_date=end_date,
+            embed_query=embedder.embed_query if embedder else None,
+            embed_model=embedder.model if embedder else "",
         )
         if result["count"] == 0:
             stats = store.stats()
+            stored = store.embedding_count(embedder.model) if embedder else 0
             result["hint"] = (
                 "인덱스에 맞는 메시지가 없습니다. "
-                f"저장된 메시지 {stats['message_count']}개. "
-                "서버에서 `python -m infra_agent.telegram_index sync` 를 실행했는지 확인하세요."
+                f"저장된 메시지 {stats['message_count']}개, 임베딩 {stored}개. "
+                "임베딩이 적으면 `.venv/bin/python -m infra_agent.telegram_index embed` 를 실행하세요."
             )
         return result
 
@@ -62,7 +68,7 @@ def register_telegram_index_tools(registry: ToolRegistry, settings: Settings) ->
                     "인덱싱해 둔 텔레그램 단체방 과거 대화를 검색한다. "
                     "암호 변경 공지, 누가 언제 뭐라고 했는지, 노트에 없는 최신 맥락을 물을 때 사용한다. "
                     "read_lab_note에 값이 없으면 이 도구도 반드시 호출한다. "
-                    "query는 짧은 핵심어. 예: 'IRIS 암호', 'SSH 포트', '시흥 서버'."
+                    "자연어 질문 그대로 query에 넣어도 된다. 예: 'IRIS 암호 뭐였지', 'SSH 포트'."
                 ),
                 "parameters": {
                     "type": "object",

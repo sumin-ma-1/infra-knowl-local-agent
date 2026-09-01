@@ -91,6 +91,30 @@ def test_prune_unlisted_removes_only_dropped_chat(tmp_path: Path):
     assert index.search("실제방")["count"] == 1
 
 
+def test_semantic_search_ranks_similar_vector(tmp_path: Path):
+    index = MessageIndex(tmp_path / "index.sqlite")
+    index.add_messages(
+        [
+            _msg(-1001, 1, "IRIS 암호 변경했습니다."),
+            _msg(-1001, 2, "오늘 점심 뭐 먹지"),
+        ]
+    )
+    index.upsert_embeddings(
+        [
+            (-1001, 1, "test-embed", [1.0, 0.0, 0.0]),
+            (-1001, 2, "test-embed", [0.0, 1.0, 0.0]),
+        ]
+    )
+    hits = index.search(
+        "아이리스 비밀번호",
+        embed_query=lambda _q: [0.97, 0.05, 0.0],
+        embed_model="test-embed",
+    )
+    assert hits["mode"] == "hybrid"
+    assert hits["results"][0]["text"].startswith("IRIS")
+    assert hits["results"][0]["match"] in {"semantic", "hybrid"}
+
+
 def test_search_telegram_tool_uses_index(tmp_path: Path):
     db = tmp_path / "index.sqlite"
     index = MessageIndex(db)

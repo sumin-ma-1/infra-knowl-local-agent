@@ -104,8 +104,15 @@ async def sync_chats(
     return {"chats": summaries, "removed": removed, **store.stats()}
 
 
-async def ingest_event_message(event: Any, store: MessageIndex, keep: set[int]) -> bool:
+async def ingest_event_message(
+    event: Any,
+    store: MessageIndex,
+    keep: set[int],
+    embedder: Any | None = None,
+) -> bool:
     """Index one NewMessage/MessageEdited if it belongs to a watched chat."""
+    import asyncio
+
     from telethon.utils import get_peer_id
 
     chat = await event.get_chat()
@@ -124,6 +131,11 @@ async def ingest_event_message(event: Any, store: MessageIndex, keep: set[int]) 
     if indexed is None:
         return False
     store.add_messages([indexed])
+    if embedder is not None:
+        try:
+            await asyncio.to_thread(embedder.index_texts, store, [indexed])
+        except Exception:
+            log.exception("live embed failed chat_id=%s message_id=%s", marked_id, indexed.message_id)
     keep.add(marked_id)
     log.info(
         "live indexed chat_id=%s message_id=%s",
@@ -145,6 +157,9 @@ async def run_live_index(settings: Settings, stop: Any) -> None:
 
     retry = max(15.0, float(settings.telegram_index_interval_seconds or 30))
     store = MessageIndex(settings.resolved_telegram_index_db())
+    from infra_agent.telegram_index.embed import MessageEmbedder
+
+    embedder = MessageEmbedder.from_settings(settings)
 
     while not stop.is_set():
         if not session_exists(settings):
@@ -172,10 +187,15 @@ async def run_live_index(settings: Settings, stop: Any) -> None:
                 result.get("message_count"),
                 sorted(keep),
             )
+            if embedder is not None:
+                asyncio.create_task(
+                    _backfill_embeddings(embedder, store, stop),
+                    name="telegram-embed-backfill",
+                )
 
             async def _on_message(event: Any) -> None:
                 try:
-                    await ingest_event_message(event, store, keep)
+                    await ingest_event_message(event, store, keep, embedder)
                 except Exception:
                     log.exception("live index ingest failed")
 
@@ -196,6 +216,20 @@ async def run_live_index(settings: Settings, stop: Any) -> None:
                 await client.disconnect()
             except Exception:
                 log.debug("telethon disconnect failed", exc_info=True)
+
+
+async def _backfill_embeddings(embedder: Any, store: MessageIndex, stop: Any) -> None:
+    import asyncio
+
+    if stop.is_set():
+        return
+    try:
+        result = await asyncio.to_thread(embedder.backfill, store)
+        log.info("embedding backfill done %s", result)
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        log.exception("embedding backfill failed")
 
 
 async def _sync_one(

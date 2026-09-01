@@ -19,10 +19,11 @@ def main(argv: list[str] | None = None) -> int:
         "command",
         nargs="?",
         default="sync",
-        choices=["login", "sync", "status", "drop"],
+        choices=["login", "sync", "status", "drop", "embed"],
         help=(
             "login: 전화번호 인증(최초 1회). sync: 가져오기 + 목록에서 뺀 방 삭제. "
-            "status: 인덱스 현황. drop: 특정 방만 로컬에서 삭제."
+            "status: 인덱스 현황. drop: 특정 방만 로컬에서 삭제. "
+            "embed: 저장된 글에 임베딩을 채운다."
         ),
     )
     parser.add_argument(
@@ -41,7 +42,29 @@ def main(argv: list[str] | None = None) -> int:
         return asyncio.run(_login(settings))
     if args.command == "status":
         store = MessageIndex(settings.resolved_telegram_index_db())
-        print(json.dumps(store.stats(), ensure_ascii=False, indent=2))
+        payload = store.stats()
+        from infra_agent.telegram_index.embed import MessageEmbedder
+
+        embedder = MessageEmbedder.from_settings(settings)
+        if embedder:
+            payload["embed_model"] = embedder.model
+            payload["embeddings"] = store.embedding_count(embedder.model)
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0
+    if args.command == "embed":
+        from infra_agent.telegram_index.embed import MessageEmbedder
+
+        embedder = MessageEmbedder.from_settings(settings)
+        if embedder is None:
+            print("OLLAMA_EMBED_MODEL 이 비어 있습니다.", file=sys.stderr)
+            return 1
+        store = MessageIndex(settings.resolved_telegram_index_db())
+        try:
+            result = embedder.backfill(store)
+        except Exception as exc:  # noqa: BLE001
+            print(str(exc), file=sys.stderr)
+            return 1
+        print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
     if args.command == "drop":
         if args.chat_id is None:

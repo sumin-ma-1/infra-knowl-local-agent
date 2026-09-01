@@ -14,6 +14,7 @@ class Settings(BaseSettings):
 
     ollama_host: str = "http://127.0.0.1:11434"
     ollama_model: str = "gemma4:e4b"
+    ollama_embed_model: str = "bge-m3"
     inventory_dir: Path = ROOT_DIR / "inventory"
     agent_max_steps: int = 8
     agent_timeout_seconds: float = 120.0
@@ -65,6 +66,9 @@ class Settings(BaseSettings):
 
     def telegram_index_ready(self) -> bool:
         return self.telegram_user_ready() and bool(self.index_chat_ids())
+
+    def embed_model_name(self) -> str:
+        return (self.ollama_embed_model or "").strip()
 
     def nextcloud_ready(self) -> bool:
         return bool(

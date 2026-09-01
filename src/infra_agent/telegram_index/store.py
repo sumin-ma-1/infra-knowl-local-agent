@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import math
 import re
 import sqlite3
+import struct
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -178,9 +181,11 @@ class MessageIndex:
         start_date: str | None = None,
         end_date: str | None = None,
         limit: int = 20,
+        embed_query: Callable[[str], list[float]] | None = None,
+        embed_model: str = "",
     ) -> dict[str, Any]:
         tokens = search_tokens(query)
-        if not tokens:
+        if not tokens and not (query or "").strip():
             return {
                 "query": query,
                 "count": 0,
@@ -188,6 +193,53 @@ class MessageIndex:
                 "results": [],
             }
 
+        keyword = self._keyword_hits(
+            tokens, chat_id=chat_id, start_date=start_date, end_date=end_date, limit=limit
+        ) if tokens else []
+        if embed_query is None or not (embed_model or "").strip():
+            return {
+                "query": query,
+                "chat_id": chat_id,
+                "count": len(keyword),
+                "mode": "keyword",
+                "results": keyword,
+            }
+        try:
+            qvec = embed_query(query)
+        except Exception:
+            return {
+                "query": query,
+                "chat_id": chat_id,
+                "count": len(keyword),
+                "mode": "keyword",
+                "results": keyword,
+            }
+        semantic = self._semantic_hits(
+            qvec,
+            embed_model,
+            chat_id=chat_id,
+            start_date=start_date,
+            end_date=end_date,
+            limit=max(limit, 20),
+        )
+        merged = _merge_hits(keyword, semantic, limit=limit)
+        return {
+            "query": query,
+            "chat_id": chat_id,
+            "count": len(merged),
+            "mode": "hybrid",
+            "results": merged,
+        }
+
+    def _keyword_hits(
+        self,
+        tokens: list[str],
+        *,
+        chat_id: int | None,
+        start_date: str | None,
+        end_date: str | None,
+        limit: int,
+    ) -> list[dict[str, Any]]:
         clauses = ["1=1"]
         params: list[Any] = []
         for token in tokens:
@@ -214,13 +266,110 @@ class MessageIndex:
         params.append(limit)
         with self._lock:
             rows = self._conn.execute(sql, params).fetchall()
-        results = [_row_to_hit(row) for row in rows]
-        return {
-            "query": query,
-            "chat_id": chat_id,
-            "count": len(results),
-            "results": results,
-        }
+        hits = [_row_to_hit(row) for row in rows]
+        for hit in hits:
+            hit["score"] = 0.55
+            hit["match"] = "keyword"
+        return hits
+
+    def _semantic_hits(
+        self,
+        query_vector: list[float],
+        model: str,
+        *,
+        chat_id: int | None,
+        start_date: str | None,
+        end_date: str | None,
+        limit: int,
+        min_score: float = 0.22,
+    ) -> list[dict[str, Any]]:
+        clauses = ["e.model = ?"]
+        params: list[Any] = [model]
+        if chat_id is not None:
+            clauses.append("m.chat_id = ?")
+            params.append(chat_id)
+        if start_date:
+            clauses.append("m.date >= ?")
+            params.append(start_date)
+        if end_date:
+            clauses.append("m.date <= ?")
+            params.append(end_date)
+        sql = f"""
+            SELECT m.chat_id, m.message_id, m.date, m.sender_id, m.sender_name,
+                   m.chat_title, m.text, e.vector
+            FROM embeddings e
+            JOIN messages m ON m.chat_id = e.chat_id AND m.message_id = e.message_id
+            WHERE {' AND '.join(clauses)}
+        """
+        with self._lock:
+            rows = self._conn.execute(sql, params).fetchall()
+        scored: list[tuple[float, dict[str, Any]]] = []
+        for row in rows:
+            vec = unpack_vector(row["vector"])
+            score = cosine_similarity(query_vector, vec)
+            if score < min_score:
+                continue
+            hit = _row_to_hit(row)
+            hit["score"] = round(score, 4)
+            hit["match"] = "semantic"
+            scored.append((score, hit))
+        scored.sort(key=lambda item: -item[0])
+        return [hit for _, hit in scored[: max(1, min(int(limit or 20), 50))]]
+
+    def upsert_embeddings(
+        self, items: list[tuple[int, int, str, list[float]]]
+    ) -> int:
+        if not items:
+            return 0
+        with self._lock:
+            self._conn.executemany(
+                """
+                INSERT INTO embeddings (chat_id, message_id, model, dim, vector)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(chat_id, message_id, model) DO UPDATE SET
+                    dim = excluded.dim,
+                    vector = excluded.vector
+                """,
+                [
+                    (chat_id, message_id, model, len(vector), pack_vector(vector))
+                    for chat_id, message_id, model, vector in items
+                ],
+            )
+            self._conn.commit()
+        return len(items)
+
+    def messages_without_embedding(self, model: str, limit: int = 64) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._conn.execute(
+                """
+                SELECT m.chat_id, m.message_id, m.text
+                FROM messages m
+                LEFT JOIN embeddings e
+                  ON e.chat_id = m.chat_id
+                 AND e.message_id = m.message_id
+                 AND e.model = ?
+                WHERE e.vector IS NULL
+                ORDER BY m.date DESC
+                LIMIT ?
+                """,
+                (model, max(1, min(int(limit), 256))),
+            ).fetchall()
+        return [
+            {
+                "chat_id": row["chat_id"],
+                "message_id": row["message_id"],
+                "text": row["text"],
+            }
+            for row in rows
+        ]
+
+    def embedding_count(self, model: str) -> int:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT COUNT(*) FROM embeddings WHERE model = ?",
+                (model,),
+            ).fetchone()
+        return int(row[0]) if row else 0
 
     def recent(self, chat_id: int | None = None, limit: int = 30) -> dict[str, Any]:
         limit = max(1, min(int(limit or 30), 80))
@@ -275,6 +424,7 @@ class MessageIndex:
                 (chat_id,),
             ).fetchone()[0]
             self._conn.execute("DELETE FROM messages WHERE chat_id = ?", (chat_id,))
+            self._conn.execute("DELETE FROM embeddings WHERE chat_id = ?", (chat_id,))
             self._conn.execute("DELETE FROM chats WHERE chat_id = ?", (chat_id,))
             self._conn.commit()
         return {
@@ -318,6 +468,14 @@ class MessageIndex:
                 PRIMARY KEY (chat_id, message_id)
             );
             CREATE INDEX IF NOT EXISTS idx_messages_date ON messages(date);
+            CREATE TABLE IF NOT EXISTS embeddings (
+                chat_id INTEGER NOT NULL,
+                message_id INTEGER NOT NULL,
+                model TEXT NOT NULL,
+                dim INTEGER NOT NULL,
+                vector BLOB NOT NULL,
+                PRIMARY KEY (chat_id, message_id, model)
+            );
             """
         )
         self._conn.commit()
@@ -335,3 +493,50 @@ def _row_to_hit(row: sqlite3.Row) -> dict[str, Any]:
         "sender": row["sender_name"],
         "text": text,
     }
+
+
+def pack_vector(vector: list[float]) -> bytes:
+    return struct.pack(f"<{len(vector)}f", *[float(x) for x in vector])
+
+
+def unpack_vector(blob: bytes) -> list[float]:
+    n = len(blob) // 4
+    return list(struct.unpack(f"<{n}f", blob))
+
+
+def cosine_similarity(left: list[float], right: list[float]) -> float:
+    if not left or not right or len(left) != len(right):
+        return 0.0
+    dot = 0.0
+    na = 0.0
+    nb = 0.0
+    for a, b in zip(left, right):
+        dot += a * b
+        na += a * a
+        nb += b * b
+    if na <= 0 or nb <= 0:
+        return 0.0
+    return dot / math.sqrt(na * nb)
+
+
+def _merge_hits(
+    keyword: list[dict[str, Any]],
+    semantic: list[dict[str, Any]],
+    limit: int,
+) -> list[dict[str, Any]]:
+    combined: dict[tuple[int, int], dict[str, Any]] = {}
+    for hit in semantic:
+        key = (int(hit["chat_id"]), int(hit["message_id"]))
+        combined[key] = dict(hit)
+    for hit in keyword:
+        key = (int(hit["chat_id"]), int(hit["message_id"]))
+        if key in combined:
+            combined[key]["score"] = round(float(combined[key].get("score") or 0) + 0.2, 4)
+            combined[key]["match"] = "hybrid"
+        else:
+            combined[key] = dict(hit)
+    ranked = sorted(
+        combined.values(),
+        key=lambda item: (-float(item.get("score") or 0), str(item.get("date") or "")),
+    )
+    return ranked[: max(1, min(int(limit or 20), 50))]
