@@ -1,0 +1,16 @@
+[Unit]
+Description=Infra Knowledge Agent Telegram bot
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/sumin/infra-knowl-local-agent
+EnvironmentFile=/home/sumin/infra-knowl-local-agent/.env
+ExecStart=/home/sumin/infra-knowl-local-agent/.venv/bin/python -m infra_agent.telegram_bot
+Restart=on-failure
+RestartSec=5
+StandardOutput=append:/home/sumin/infra-knowl-local-agent/data/telegram-bot.log
+StandardError=append:/home/sumin/infra-knowl-local-agent/data/telegram-bot.log
+
+[Install]
+WantedBy=default.target
