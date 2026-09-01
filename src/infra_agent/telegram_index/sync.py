@@ -39,26 +39,38 @@ async def login(settings: Settings) -> dict[str, Any]:
     return _user_summary(me)
 
 
-async def sync_chats(settings: Settings, store: MessageIndex | None = None) -> dict[str, Any]:
+def is_watched_chat(chat_id: int | None, keep: set[int]) -> bool:
+    if chat_id is None:
+        return False
+    return int(chat_id) in keep
+
+
+async def sync_chats(
+    settings: Settings,
+    store: MessageIndex | None = None,
+    client: Any | None = None,
+) -> dict[str, Any]:
     if not settings.telegram_index_ready():
         raise RuntimeError(
             "TELEGRAM_API_ID, TELEGRAM_API_HASH, TELEGRAM_INDEX_CHATS 를 .env에 넣으세요."
-        )
-    if not session_exists(settings):
-        raise RuntimeError(
-            "텔레그램 세션이 없습니다. 서버에서 "
-            "`python -m infra_agent.telegram_index login` 을 한 번 실행하세요."
         )
     if store is None:
         store = MessageIndex(settings.resolved_telegram_index_db())
 
     from telethon.errors import FloodWaitError, RPCError
 
-    client = _client(settings)
-    await client.connect()
-    if not await client.is_user_authorized():
-        await client.disconnect()
-        raise RuntimeError("세션이 만료되었습니다. login을 다시 실행하세요.")
+    owns_client = client is None
+    if owns_client:
+        if not session_exists(settings):
+            raise RuntimeError(
+                "텔레그램 세션이 없습니다. 서버에서 "
+                "`python -m infra_agent.telegram_index login` 을 한 번 실행하세요."
+            )
+        client = _client(settings)
+        await client.connect()
+        if not await client.is_user_authorized():
+            await client.disconnect()
+            raise RuntimeError("세션이 만료되었습니다. login을 다시 실행하세요.")
 
     max_messages = int(settings.telegram_index_max_messages or 0)
     summaries: list[dict[str, Any]] = []
@@ -76,7 +88,8 @@ async def sync_chats(settings: Settings, store: MessageIndex | None = None) -> d
                 continue
             summaries.append(summary)
     finally:
-        await client.disconnect()
+        if owns_client:
+            await client.disconnect()
     keep = set(settings.index_chat_ids())
     for item in summaries:
         cid = item.get("chat_id")
@@ -89,6 +102,100 @@ async def sync_chats(settings: Settings, store: MessageIndex | None = None) -> d
             [(item["chat_id"], item.get("deleted_messages")) for item in removed],
         )
     return {"chats": summaries, "removed": removed, **store.stats()}
+
+
+async def ingest_event_message(event: Any, store: MessageIndex, keep: set[int]) -> bool:
+    """Index one NewMessage/MessageEdited if it belongs to a watched chat."""
+    from telethon.utils import get_peer_id
+
+    chat = await event.get_chat()
+    marked_id = int(get_peer_id(chat)) if chat is not None else int(event.chat_id)
+    raw_id = int(getattr(event, "chat_id", 0) or 0)
+    if not (is_watched_chat(marked_id, keep) or is_watched_chat(raw_id, keep)):
+        return False
+    title = _entity_title(chat)
+    sender = None
+    try:
+        sender = await event.get_sender()
+    except Exception:
+        sender = getattr(event, "sender", None)
+    message = getattr(event, "message", event)
+    indexed = _to_indexed(message, marked_id, title, sender)
+    if indexed is None:
+        return False
+    store.add_messages([indexed])
+    keep.add(marked_id)
+    log.info(
+        "live indexed chat_id=%s message_id=%s",
+        marked_id,
+        indexed.message_id,
+    )
+    return True
+
+
+async def run_live_index(settings: Settings, stop: Any) -> None:
+    """Catch up, then append each new message in TELEGRAM_INDEX_CHATS."""
+    import asyncio
+
+    from telethon import events
+
+    if not settings.telegram_index_ready():
+        log.info("telegram index skipped (TELEGRAM_INDEX_CHATS or API keys missing)")
+        return
+
+    retry = max(15.0, float(settings.telegram_index_interval_seconds or 30))
+    store = MessageIndex(settings.resolved_telegram_index_db())
+
+    while not stop.is_set():
+        if not session_exists(settings):
+            log.warning(
+                "telegram index waiting for session. "
+                "Run `.venv/bin/python -m infra_agent.telegram_index login` once on this host."
+            )
+            try:
+                await asyncio.wait_for(stop.wait(), timeout=retry)
+            except asyncio.TimeoutError:
+                continue
+            return
+
+        client = _client(settings)
+        try:
+            await client.start(phone=settings.telegram_phone or None)
+            result = await sync_chats(settings, store=store, client=client)
+            keep = set(settings.index_chat_ids())
+            for item in result.get("chats") or []:
+                cid = item.get("chat_id")
+                if cid is not None:
+                    keep.add(int(cid))
+            log.info(
+                "telegram index catch-up messages=%s watching=%s",
+                result.get("message_count"),
+                sorted(keep),
+            )
+
+            async def _on_message(event: Any) -> None:
+                try:
+                    await ingest_event_message(event, store, keep)
+                except Exception:
+                    log.exception("live index ingest failed")
+
+            client.add_event_handler(_on_message, events.NewMessage())
+            client.add_event_handler(_on_message, events.MessageEdited())
+            log.info("telegram index listening for new messages in registered chats")
+            await stop.wait()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.exception("telegram live index failed; retrying")
+            try:
+                await asyncio.wait_for(stop.wait(), timeout=retry)
+            except asyncio.TimeoutError:
+                pass
+        finally:
+            try:
+                await client.disconnect()
+            except Exception:
+                log.debug("telethon disconnect failed", exc_info=True)
 
 
 async def _sync_one(

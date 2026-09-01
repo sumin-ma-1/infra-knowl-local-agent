@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from infra_agent.telegram_index.store import IndexedMessage, MessageIndex
+from infra_agent.telegram_index.sync import is_watched_chat
 from infra_agent.tools.telegram import register_telegram_index_tools
 from infra_agent.tools.inventory_tools import ToolRegistry
 
@@ -41,6 +42,14 @@ def test_search_matches_korean_and_english(tmp_path: Path):
     assert only_other["count"] == 1
     recent = index.recent(chat_id=-1001, limit=1)
     assert recent["results"][0]["message_id"] == 2
+
+
+def test_is_watched_chat_only_registered_rooms():
+    keep = {-5141393598, -5502317810}
+    assert is_watched_chat(-5141393598, keep) is True
+    assert is_watched_chat(-5502317810, keep) is True
+    assert is_watched_chat(-1, keep) is False
+    assert is_watched_chat(None, keep) is False
 
 
 def test_incremental_last_message_id(tmp_path: Path):

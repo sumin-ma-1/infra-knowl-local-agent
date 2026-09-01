@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     telegram_index_chats: str = ""
     telegram_session_path: str = "data/telegram-user"
     telegram_index_db: str = "data/telegram-index.sqlite"
-    telegram_index_interval_seconds: float = 900.0
+    telegram_index_interval_seconds: float = 30.0
     telegram_index_max_messages: int = 0
     nextcloud_url: str = ""
     nextcloud_user: str = ""

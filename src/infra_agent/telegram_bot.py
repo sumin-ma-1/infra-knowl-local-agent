@@ -2,8 +2,8 @@
 
 This is the chat UI, not the conversation-search tool.
 Add the bot to an existing group later; it only answers /ask, @mentions,
-or replies to its own messages. Group history is indexed separately
-(`python -m infra_agent.telegram_index`).
+or replies to its own messages. Registered group history is indexed live
+by the user-account Telethon client (`run_live_index`).
 """
 
 from __future__ import annotations
@@ -153,13 +153,19 @@ def main(argv: list[str] | None = None) -> int:
                 await reply_markdownish(message, chunk)
 
     async def on_startup(application: Application) -> None:
-        task = asyncio.create_task(
-            _periodic_telegram_index(settings),
+        from infra_agent.telegram_index.sync import run_live_index
+
+        stop = asyncio.Event()
+        application.bot_data["index_stop"] = stop
+        application.bot_data["index_task"] = asyncio.create_task(
+            run_live_index(settings, stop),
             name="telegram-index",
         )
-        application.bot_data["index_task"] = task
 
     async def on_shutdown(application: Application) -> None:
+        stop = application.bot_data.get("index_stop")
+        if stop:
+            stop.set()
         task = application.bot_data.get("index_task")
         if task:
             task.cancel()
@@ -187,35 +193,6 @@ def main(argv: list[str] | None = None) -> int:
     )
     app.run_polling(allowed_updates=["message"])
     return 0
-
-
-async def _periodic_telegram_index(settings) -> None:
-    from infra_agent.telegram_index.sync import session_exists, sync_chats
-
-    if not settings.telegram_index_ready():
-        log.info("telegram index skipped (TELEGRAM_INDEX_CHATS or API keys missing)")
-        return
-    interval = max(60.0, float(settings.telegram_index_interval_seconds or 900))
-    while True:
-        if not session_exists(settings):
-            log.warning(
-                "telegram index waiting for session. "
-                "Run `python -m infra_agent.telegram_index login` once on this host."
-            )
-            await asyncio.sleep(interval)
-            continue
-        try:
-            result = await sync_chats(settings)
-            log.info(
-                "telegram index sync messages=%s chats=%s",
-                result.get("message_count"),
-                [c.get("title") or c.get("chat_id") for c in result.get("chats") or []],
-            )
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            log.exception("telegram index sync failed")
-        await asyncio.sleep(interval)
 
 
 def _chunks(text: str, limit: int = TELEGRAM_MAX) -> list[str]:
