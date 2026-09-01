@@ -21,6 +21,7 @@ from infra_agent.agent.loop import run_agent
 from infra_agent.agent.ollama import OllamaClient
 from infra_agent.config import get_settings
 from infra_agent.inventory.store import InventoryStore
+from infra_agent.telegram_format import reply_markdownish
 from infra_agent.telegram_policy import chat_allowed, extract_ask_command, group_question
 from infra_agent.tools.inventory_tools import build_registry
 
@@ -148,7 +149,7 @@ def main(argv: list[str] | None = None) -> int:
             del history[:-12]
             text = result.answer.strip() or "(빈 응답)"
             for chunk in _chunks(text):
-                await message.reply_text(chunk)
+                await reply_markdownish(message, chunk)
 
     app = (
         Application.builder()
